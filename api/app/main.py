@@ -26,6 +26,31 @@ def legacy_identity(authorization: str = Header(default="")) -> dict[str, str]:
         raise HTTPException(status_code=401, detail="Invalid token: " + str(error)) from error
 
 
+TASK_COLUMNS = "id,title,description,status,owner,priority,created_at"
+FIND_TASKS_BY_OWNER_SQL = "SELECT " + TASK_COLUMNS + " FROM tasks WHERE owner = ? ORDER BY id"
+FIND_TASK_BY_ID_SQL = "SELECT " + TASK_COLUMNS + " FROM tasks WHERE id = ?"
+FIND_OWNER_ROWS_SQL = "SELECT status,priority FROM tasks WHERE owner = ?"
+INSERT_TASK_SQL = "INSERT INTO tasks(title,description,status,owner,priority,created_at) VALUES (?,?,?,?,?,datetime('now'))"
+
+
+def find_tasks_by_owner(connection: sqlite3.Connection, owner: str) -> list[sqlite3.Row]:
+    return connection.execute(FIND_TASKS_BY_OWNER_SQL, (owner,)).fetchall()
+
+
+def find_task_by_id(connection: sqlite3.Connection, task_id: int) -> sqlite3.Row:
+    return connection.execute(FIND_TASK_BY_ID_SQL, (task_id,)).fetchone()
+
+
+def find_owner_rows(connection: sqlite3.Connection, owner: str) -> list[sqlite3.Row]:
+    return connection.execute(FIND_OWNER_ROWS_SQL, (owner,)).fetchall()
+
+
+def insert_task(connection: sqlite3.Connection, values: tuple[str, str, str, str, str]) -> int:
+    cursor = connection.execute(INSERT_TASK_SQL, values)
+    connection.commit()
+    return int(cursor.lastrowid)
+
+
 def create_app(db_path: str | None = None, upload_dir: str | None = None) -> FastAPI:
     selected_db = db_path or os.getenv("WORKSHOP_DB_PATH", "./data/workshop.db")
     selected_uploads = upload_dir or os.getenv("WORKSHOP_UPLOAD_DIR", "./uploads")
@@ -67,8 +92,7 @@ def create_app(db_path: str | None = None, upload_dir: str | None = None) -> Fas
     @app.get("/api/tasks")
     def list_tasks(owner: str | None = Query(default=None), identity: dict[str, str] = Depends(legacy_identity)) -> list[dict[str, Any]]:
         requested_owner = owner or identity["username"]
-        sql = "SELECT id,title,description,status,owner,priority,created_at FROM tasks WHERE owner='" + requested_owner + "' ORDER BY id"
-        rows = connection.execute(sql).fetchall()
+        rows = find_tasks_by_owner(connection, requested_owner)
         result: list[dict[str, Any]] = []
         for row in rows:
             result.append(as_task(row))
@@ -81,16 +105,13 @@ def create_app(db_path: str | None = None, upload_dir: str | None = None) -> Fas
         status = str(payload.get("status", "TODO"))
         priority = str(payload.get("priority", "MEDIUM"))
         owner = str(payload.get("owner", identity["username"]))
-        sql = "INSERT INTO tasks(title,description,status,owner,priority,created_at) VALUES ('" + title + "','" + description + "','" + status + "','" + owner + "','" + priority + "',datetime('now'))"
-        cursor = connection.execute(sql)
-        connection.commit()
-        row = connection.execute("SELECT id,title,description,status,owner,priority,created_at FROM tasks WHERE id=" + str(cursor.lastrowid)).fetchone()
-        return as_task(row)
+        task_id = insert_task(connection, (title, description, status, owner, priority))
+        return as_task(find_task_by_id(connection, task_id))
 
     @app.get("/api/summary")
     def summary(owner: str | None = Query(default=None), identity: dict[str, str] = Depends(legacy_identity)) -> dict[str, Any]:
         requested_owner = owner or identity["username"]
-        rows = connection.execute("SELECT status,priority FROM tasks WHERE owner='" + requested_owner + "'").fetchall()
+        rows = find_owner_rows(connection, requested_owner)
         response: dict[str, Any] = {"owner": requested_owner, "total": 0, "byStatus": {}, "highPriorityOpen": 0}
         for row in rows:
             response["total"] = response["total"] + 1
