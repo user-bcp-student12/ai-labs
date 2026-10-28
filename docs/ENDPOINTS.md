@@ -8,7 +8,7 @@ Contratos de los servicios de ai-labs. Esta version documenta solo la seccion `a
 
 - **Contrato observado**: derivado de `api/app/main.py` y comprobado con ejecuciones locales en memoria (TestClient sobre una base SQLite temporal). Es lo que hace hoy el servicio, incluidos sus defectos.
 - **Contrato acordado**: no existe. Ninguna persona lo ha aprobado todavia. Los cambios que afecten a estos endpoints necesitan aprobacion humana antes de implementarse (ver PLAN.md).
-- **Riesgos pendientes** (ver HALLAZGOS.md): H-API-02 (token sin firma), H-API-03 (`owner` elegido por el cliente), H-API-05 (nombre de archivo sin normalizar), H-API-08 (detalle interno en errores), H-API-09 (CORS abierto), H-API-10 (valores de `status` y `priority` sin validar). H-API-04 esta resuelto: las consultas ya estan parametrizadas.
+- **Riesgos pendientes** (ver HALLAZGOS.md): H-API-03 (`owner` elegido por el cliente), H-API-05 (nombre de archivo sin normalizar), H-API-08 (detalle interno en errores), H-API-09 (CORS abierto), H-API-10 (valores de `status` y `priority` sin validar). H-API-02 y H-API-04 estan resueltos.
 
 ### Datos generales
 
@@ -22,18 +22,19 @@ Contratos de los servicios de ai-labs. Esta version documenta solo la seccion `a
 ### Autenticacion (comun a todos los endpoints)
 
 - **Header exacto**: `Authorization: Bearer <token>`
-- **Formato del token**: Base64 de la cadena `usuario|rol|expiracion|secreto`.
-  - `usuario`: nombre de usuario; se devuelve como identidad.
-  - `rol`: texto libre; no se valida contra ninguna lista.
-  - `expiracion`: epoch en segundos. Si es menor que la hora actual, el token se rechaza.
-  - `secreto`: valor constante definido en el codigo (ver H-API-02). Debe coincidir exactamente.
-- **Validacion**: el servicio decodifica Base64, separa 4 partes y compara el secreto y la expiracion. No hay firma, emisor ni audiencia.
+- **Formato del token**: JWT compacto firmado con RS256.
+  - `sub`: identidad del usuario; se devuelve como `username`.
+  - `role`: rol del usuario.
+  - `exp`: expiracion en epoch, validada por el verificador.
+  - `iss` y `aud`: emisor y audiencia esperados por la API.
+- **Validacion**: se exige una firma RS256 valida, los claims `sub`, `role`, `exp`, `iss` y `aud`, y coincidencia con el emisor y la audiencia configurados. Los tokens Base64 legados se rechazan.
+- **Configuracion obligatoria**: `AUTH_JWT_PUBLIC_KEY` (clave publica PEM), `AUTH_JWT_ISSUER` y `AUTH_JWT_AUDIENCE`. No hay valores predeterminados; si falta o es invalida la configuracion, las rutas protegidas responden `503 Service Unavailable` y no aceptan tokens. `compose.yaml` exige las tres variables al iniciar el servicio `api`.
 - **Nota de parseo**: el servicio elimina la subcadena `Bearer ` (sensible a mayusculas) del valor del header. Un header sin ese prefijo se intenta decodificar igual. Comportamiento con prefijo en minuscula: pregunta abierta.
-- **Sin header**: el valor por defecto es vacio y la respuesta es 401.
+- **Sin header**: con la configuracion JWT presente, la respuesta es 401.
 
 ### Errores comunes
 
-**401 Unauthorized** (cualquier endpoint protegido). Ocurre si falta el header, si el token no decodifica, si no tiene 4 partes, si el secreto no coincide o si ha expirado.
+**401 Unauthorized** (cualquier endpoint protegido). Ocurre si falta el header, si el token esta mal formado, expirado, alterado, no esta firmado por una clave confiable o no cumple los claims requeridos.
 
 Ejemplo, sin header o con token expirado:
 
@@ -48,6 +49,8 @@ Ejemplo, con `Authorization: Bearer invalid`:
 ```
 
 El texto de `detail` contiene el mensaje de la excepcion de Python. Es un detalle interno que se expone al cliente (H-API-08). Su contenido puede cambiar; no lo uses para logica de cliente.
+
+**503 Service Unavailable** (cualquier endpoint protegido). Ocurre si falta la configuracion obligatoria de verificacion del JWT o la clave publica no es valida. Formato: `{"detail": "Authentication is not configured"}`.
 
 **422 Unprocessable Entity** (validacion de FastAPI). Ocurre si falta el cuerpo o no es un objeto JSON en `POST /api/tasks`, o si falta el archivo en `POST /api/requirements`. Formato de FastAPI:
 
@@ -99,7 +102,8 @@ Si el usuario no tiene tareas, la respuesta es `200` con `[]`.
 
 | codigo | cuando | cuerpo de ejemplo |
 |---|---|---|
-| 401 | Token ausente, mal formado, con secreto incorrecto o expirado. | `{"detail": "Invalid token: invalid token"}` |
+| 401 | Token ausente, mal formado, expirado, alterado, no firmado por una clave confiable o con claims invalidos. | `{"detail": "Invalid token: invalid token"}` |
+| 503 | Configuracion de verificacion ausente o invalida. | `{"detail": "Authentication is not configured"}` |
 
 6. **Notas de seguridad**
 - **Autorizacion por parametro (H-API-03, Pendiente)**: con un token de `student`, `GET /api/tasks?owner=trainer` devuelve las tareas de `trainer` con `200`. Verificado localmente. El contrato a futuro deberia ligar la consulta a la identidad del token.
@@ -151,7 +155,8 @@ Ejemplo (respuesta real del mismo cuerpo):
 
 | codigo | cuando | cuerpo de ejemplo |
 |---|---|---|
-| 401 | Token ausente, mal formado, con secreto incorrecto o expirado. | `{"detail": "Invalid token: invalid token"}` |
+| 401 | Token ausente, mal formado, expirado, alterado, no firmado por una clave confiable o con claims invalidos. | `{"detail": "Invalid token: invalid token"}` |
+| 503 | Configuracion de verificacion ausente o invalida. | `{"detail": "Authentication is not configured"}` |
 | 422 | Cuerpo ausente. | `{"detail": [{"type": "missing", "loc": ["body"], "msg": "Field required", "input": null}]}` |
 | 422 | Cuerpo JSON que no es objeto (por ejemplo, una lista). | `{"detail": [{"type": "dict_type", "loc": ["body"], "msg": "Input should be a valid dictionary", "input": ["a"]}]}` |
 
@@ -199,7 +204,8 @@ Si el usuario no tiene tareas: `{"owner": "<usuario>", "total": 0, "byStatus": {
 
 | codigo | cuando | cuerpo de ejemplo |
 |---|---|---|
-| 401 | Token ausente, mal formado, con secreto incorrecto o expirado. | `{"detail": "Invalid token: invalid token"}` |
+| 401 | Token ausente, mal formado, expirado, alterado, no firmado por una clave confiable o con claims invalidos. | `{"detail": "Invalid token: invalid token"}` |
+| 503 | Configuracion de verificacion ausente o invalida. | `{"detail": "Authentication is not configured"}` |
 
 6. **Notas de seguridad**
 - **Resumen de otro usuario (H-API-03, Pendiente)**: con un token de `student`, `GET /api/summary?owner=trainer` devuelve `{"owner": "trainer", "total": 2, "byStatus": {"TODO": 2}, "highPriorityOpen": 0}` con `200`. Verificado localmente.
@@ -241,7 +247,8 @@ Ejemplo (archivo `requirements.txt` con 24 bytes; la ruta depende del equipo):
 
 | codigo | cuando | cuerpo de ejemplo |
 |---|---|---|
-| 401 | Token ausente, mal formado, con secreto incorrecto o expirado. | `{"detail": "Invalid token: invalid token"}` |
+| 401 | Token ausente, mal formado, expirado, alterado, no firmado por una clave confiable o con claims invalidos. | `{"detail": "Invalid token: invalid token"}` |
+| 503 | Configuracion de verificacion ausente o invalida. | `{"detail": "Authentication is not configured"}` |
 | 422 | Falta el campo `file`. | `{"detail": [{"type": "missing", "loc": ["body", "file"], "msg": "Field required", "input": null}]}` |
 
 6. **Notas de seguridad**
@@ -281,7 +288,8 @@ Ejemplo, con el servicio de autenticacion inaccesible (la cadena de error depend
 
 | codigo | cuando | cuerpo de ejemplo |
 |---|---|---|
-| 401 | Token ausente, mal formado, con secreto incorrecto o expirado. | `{"detail": "Invalid token: invalid token"}` |
+| 401 | Token ausente, mal formado, expirado, alterado, no firmado por una clave confiable o con claims invalidos. | `{"detail": "Invalid token: invalid token"}` |
+| 503 | Configuracion de verificacion ausente o invalida. | `{"detail": "Authentication is not configured"}` |
 
 6. **Notas de seguridad**
 - El campo `body` puede exponer el mensaje interno de la conexion (H-API-08, Pendiente).
@@ -299,4 +307,4 @@ Ejemplo, con el servicio de autenticacion inaccesible (la cadena de error depend
 6. Limite de tamano y extensiones permitidas en `POST /api/requirements`: no definidos en el codigo.
 7. Respuesta con errores no controlados (500): no observada.
 8. Zona horaria de `createdAt` en el servidor real: por lectura del codigo, UTC; no comprobado.
-9. El emisor de los tokens: el servicio de autenticacion no se ha leido en este paso (no es parte del alcance de api). El formato del token debe coordinarse con auth antes de cambiarlo (H-API-02).
+9. El emisor de los tokens queda fuera del alcance de api; debe emitir JWT RS256 con los claims `sub`, `role`, `exp`, `iss` y `aud` compatibles con `AUTH_JWT_PUBLIC_KEY`, `AUTH_JWT_ISSUER` y `AUTH_JWT_AUDIENCE` (H-API-02).
