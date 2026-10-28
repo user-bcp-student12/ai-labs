@@ -1,6 +1,6 @@
 # PLAN
 
-Propuesta de correccion para hallazgos de api. Sin cambios de codigo todavia. Aprobacion humana: pendiente.
+Seguimiento de correcciones para hallazgos de api. H-API-02 esta implementado; los demas hallazgos conservan su propio estado de aprobacion e implementacion.
 
 ## Aprobacion Humana
 - Raquel
@@ -9,7 +9,7 @@ Propuesta de correccion para hallazgos de api. Sin cambios de codigo todavia. Ap
 
 ## Seleccion de alcance (api)
 
-Hallazgos de HALLAZGOS.md en estado "Pendiente" con severidad alta. El campo de seleccion del OBJETIVO llego sin completar; esta seleccion es una inferencia y debe confirmarse.
+La seleccion original incluyo H-API-02, H-API-03, H-API-04 y H-API-05. H-API-02 ya fue aprobado e implementado; los otros hallazgos mantienen su propio estado. El campo de seleccion del OBJETIVO llego sin completar.
 
 - H-API-02: token Base64 con secreto embebido (alta). Riesgo: tokens falsificables.
 - H-API-03: el cliente elige `owner` (alta). Riesgo: lectura de datos de otro usuario.
@@ -20,11 +20,11 @@ Quedan fuera de este plan: H-API-01, H-API-06 a H-API-11 (otros pasos).
 
 ## Restricciones comunes
 
-- Contrato observado (no hay `docs/ENDPOINTS.md`): rutas, codigos 201/401 y campos de respuesta en HALLAZGOS.md. Los cambios que afectan el contrato se marcan como "Decision pendiente".
-- Consumidores: el frontend (web) usa `/api/tasks`. Cambios de token o de `owner` deben revisarse contra web y auth. Auth no se lee en este paso.
-- Dependencias: no se agrega ninguna en este plan sin aprobacion. Si se aprueba PyJWT para H-API-02, la justificacion es verificar firma HS256, `exp` y `iss`/`aud` sin implementar criptografia propia; alternativa sin dependencia: `hmac` de la biblioteca estandar.
+- Contrato observado: rutas, codigos y campos de respuesta estan documentados en `docs/ENDPOINTS.md`; no existe aprobacion formal general de todos los contratos.
+- Consumidores: el frontend (web) usa `/api/tasks`. Para H-API-02 se conserva la cabecera y el contrato de las rutas; el emisor auth debe emitir JWT compatibles. No se leyo ni modifico codigo de web o auth.
+- Dependencias: H-API-02 usa PyJWT con soporte criptografico para verificar RS256; no se implementa criptografia propia.
 - Clean code (AGENTS.md): una responsabilidad por funcion, sin duplicacion, sin anidamiento profundo (guard clauses), sin numeros magicos (constantes con nombre).
-- Orden de ejecucion: caracterizacion de todos los puntos, luego H-API-04, H-API-03, H-API-05 y H-API-02. H-API-02 va al final porque depende de la coordinacion con auth.
+- Orden de ejecucion: H-API-04 se corrigio antes; H-API-02 se implemento despues de coordinar el contrato del token con auth. H-API-03 y H-API-05 siguen fuera de este cambio.
 - Pruebas: `pytest` con cwd `api/`. Datos ficticios y SQLite temporal (`tmp_path`).
 
 ## H-API-04: SQL concatenado en filtros e inserts
@@ -79,30 +79,32 @@ Quedan fuera de este plan: H-API-01, H-API-06 a H-API-11 (otros pasos).
 
 - Hallazgo: H-API-02 de HALLAZGOS.md. Evidencia: api/app/main.py:14, api/app/main.py:19-22.
 - Problema: el token es Base64 con secreto constante en el codigo. Quien lo lea puede fabricar tokens. Sin firma verificada, emisor ni audiencia. Hecho observado en el codigo.
-- Cambio propuesto:
-  - Secreto desde variable de entorno (por ejemplo `WORKSHOP_JWT_SECRET`), sin valor por defecto en el codigo.
-  - Verificacion real de firma HS256, `exp` y claims explicitos (`sub`, `role`, `iss`, `aud`). Ver dependencia en Restricciones comunes.
-  - Los errores devuelven 401 con mensaje generico (H-API-08 es otro paso).
-- Clean code: un modulo `app/security.py` con `verify_token(raw) -> Identity`. El resto de la app no conoce el formato.
-- Archivos a tocar: api/app/main.py (`legacy_identity` pasa a delegar), nuevo api/app/security.py, api/tests/ (ajustar el helper `token`), requirements.txt solo si se aprueba una dependencia.
-- Caracterizacion antes de tocar:
-  - C-02a: token valido con formato actual devuelve 200 en `GET /api/tasks`. Comportamiento que cambia. Se registra antes de cambiar.
+- Cambio implementado:
+  - JWT compacto RS256; la clave publica PEM, emisor y audiencia se obtienen obligatoriamente de `AUTH_JWT_PUBLIC_KEY`, `AUTH_JWT_ISSUER` y `AUTH_JWT_AUDIENCE`.
+  - El verificador exige `sub`, `role`, `exp`, `iss` y `aud`, valida `iss`/`aud` y limita el algoritmo a RS256.
+  - Tokens Base64 legados se rechazan. Configuracion ausente/invalida devuelve 503; credenciales invalidas devuelven 401 generico.
+- Clean code: `app/security.py` contiene la verificacion; la dependencia de ruta mantiene la identidad como `username` y `role`.
+- Archivos modificados: `api/app/main.py`, nuevo `api/app/security.py`, pruebas de API, `api/requirements.txt`, `compose.yaml`, `docs/ENDPOINTS.md` y `docs/TESTING.md`.
+- Dependencias aprobadas: `PyJWT[crypto]==2.15.1` y `cryptography==50.0.2`.
+- Caracterizacion y resultado:
+  - Baseline previo: 49 passed, 9 xfailed.
+  - Pruebas nuevas de configuracion antes de implementar: 4 fallos esperados por la falta de verificacion JWT y fail-closed.
+  - Suite posterior: 80 passed, 7 xfailed; cobertura total 97%, `app/security.py` 93%.
+  - C-02a: token firmado valido devuelve 200 en las rutas protegidas; se conserva el comportamiento permitido.
   - C-02b: token con formato invalido (`Bearer invalid`) devuelve 401. Ya cubierto por `test_rejects_invalid_token`. Debe mantenerse.
-  - C-02c: token con expiracion pasada devuelve 401. Debe mantenerse.
-  - C-02d: token fabricado con el secreto embebido devuelve 200 hoy. Se registra solo como evidencia del riesgo; el resultado esperado tras el cambio es 401.
-- Decision pendiente y dependencia externa:
-  - Auth emite tokens con su propio formato. El cambio debe coordinarse con auth antes de tocar `legacy_identity`. Sin esa coordinacion, el cambio rompe el login.
-  - Confirmar si se aprueba la dependencia PyJWT o la implementacion con `hmac`.
-  - Ambos cambios de token afectan a web (que guarda el token). Revisar antes de aprobar.
+  - C-02c: token expirado devuelve 401.
+  - C-02d: token Base64 legado o JWT con payload alterado devuelve 401.
+- Coordinacion externa:
+  - El usuario confirmo que auth emitira JWT RS256 compatibles. El servicio auth queda fuera de este alcance y no se inspecciono ni modifico.
+  - El despliegue debe alinear la clave publica, `iss` y `aud` con el emisor. Los tokens legados no tienen compatibilidad temporal porque no es posible validar su autenticidad.
 
 ## Pendientes y decisiones
 
-- Aprobacion humana del alcance (H-API-02, 03, 04, 05) y de las decisiones marcadas.
-- Coordinacion con auth para el formato del token (H-API-02). No leida en este paso.
-- Confirmar con web el uso de `owner` (H-API-03) y el formato de token (H-API-02).
-- Ejecutar la caracterizacion con `pytest` desde `api/` antes de cualquier cambio. No ejecutada en este paso.
+- Aprobacion humana de H-API-03 y H-API-05 y de sus decisiones pendientes.
+- Confirmar con web el uso de `owner` (H-API-03).
+- H-API-02: coordinacion del formato con auth confirmada por el usuario; repetir las pruebas JWT como regresion.
 
 ## Estado de ejecucion (api)
 
 - H-API-04: ejecutado. Caracterizacion C-04 (api/tests/test_sql_characterization.py) antes del cambio: 6 pasan; C-04b, C-04e y C-04f registran 500 con comillas. Cambio en api/app/main.py. Despues: 10 pasan de 10 (4 existentes + 6 de caracterizacion), cobertura de app/main.py 92%, cwd api/.
-- H-API-02, H-API-03, H-API-05: bloqueados. Tienen aprobacion de ID, pero siguen abiertas sus "Decision pendiente" (403 frente a ignorar owner; extensiones y tamano de subida; PyJWT o hmac y coordinacion con auth).
+- H-API-02: implementado y validado. H-API-03 y H-API-05 mantienen decisiones pendientes (403 frente a ignorar `owner`; extensiones y tamano de subida).

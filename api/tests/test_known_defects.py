@@ -4,8 +4,6 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import LEGACY_SECRET
-
 TWO_MIB = 2 * 1024 * 1024
 
 
@@ -64,13 +62,11 @@ def test_upload_filename_cannot_escape_upload_dir(client: TestClient, student_he
     assert not (tmp_path / "escape.txt").exists()
 
 
-@pytest.mark.xfail(strict=True, reason="H-API-02: token firmado con el secreto embebido debe rechazarse (resultado esperado tras el cambio, PLAN.md)")
-def test_token_built_with_embedded_secret_is_rejected(client: TestClient, token_builder: Callable[..., str]) -> None:
-    response = client.get("/api/tasks", headers={"Authorization": "Bearer " + token_builder("student", secret=LEGACY_SECRET)})
+def test_legacy_token_is_rejected(client: TestClient, legacy_token_builder: Callable[..., str]) -> None:
+    response = client.get("/api/tasks", headers={"Authorization": "Bearer " + legacy_token_builder("student")})
     assert response.status_code == 401
 
 
-@pytest.mark.xfail(strict=True, reason="H-API-08: el detalle del 401 no debe exponer texto interno de la excepcion")
 def test_invalid_token_detail_hides_internal_error(client: TestClient) -> None:
     response = client.get("/api/tasks", headers={"Authorization": "Bearer invalid"})
     assert "Incorrect padding" not in response.json()["detail"]

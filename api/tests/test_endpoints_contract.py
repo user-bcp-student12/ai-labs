@@ -6,7 +6,17 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-INVALID_KINDS = ["missing", "malformed", "expired", "wrong_secret"]
+INVALID_KINDS = [
+    "missing",
+    "malformed",
+    "expired",
+    "wrong_key",
+    "wrong_algorithm",
+    "tampered",
+    "wrong_issuer",
+    "wrong_audience",
+    "missing_role",
+]
 TASK_KEYS = {"id", "title", "description", "status", "owner", "priority", "createdAt"}
 SEEDED_TITLES = ["Refactor login", "Review API"]
 SEEDED_SUMMARY = {"owner": "student", "total": 2, "byStatus": {"TODO": 1, "IN_PROGRESS": 1}, "highPriorityOpen": 1}
