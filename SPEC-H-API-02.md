@@ -35,11 +35,18 @@ La validación actual no permite comprobar que los datos del token fueron emitid
 
 ## Criterios de aceptación
 
-1. Una solicitud autenticada con un token auténtico y vigente puede acceder a las rutas protegidas conforme a los permisos que ya le corresponden.
-2. Un token cuyos datos de identidad, rol o expiración hayan sido alterados después de su emisión es rechazado.
-3. Un token fabricado sin autenticidad verificable es rechazado, aunque contenga una identidad, un rol y una expiración válidos en apariencia.
-4. El secreto de validación no está incorporado en el código fuente.
-5. Las rutas y los formatos de solicitud y respuesta protegidos existentes permanecen compatibles con sus consumidores.
+1. Una petición a una ruta protegida con un token firmado válido, vigente y con `iss` y `aud` coincidentes con la configuración es procesada; el usuario es el claim `sub`.
+2. Un token alterado después de firmarlo responde `401` con campo `detail`.
+3. Un token firmado con una clave distinta a la configurada responde `401`.
+4. Un token sin firma, expirado, con claims ausentes o con `iss`/`aud` distintos responde `401` y no procesa la petición.
+5. Un token en el formato Base64 anterior responde `401`.
+6. Una petición sin cabecera `Authorization` responde `401` con campo `detail`.
+7. Si falta `AUTH_JWT_PUBLIC_KEY`, `AUTH_JWT_ISSUER` o `AUTH_JWT_AUDIENCE`, o la clave no es un PEM válido, responde `503` y no procesa la petición, aunque el token sea válido.
+8. El código fuente no contiene claves de firma, secretos ni claves públicas embebidas.
+9. Los registros y respuestas no contienen valores de tokens ni de claves, salvo el campo `detail`.
+10. Las rutas protegidas y `POST /auth/login` mantienen sus formatos de solicitud y respuesta.
+
+Detalle de escenarios: `openspec/changes/hu-01-fortalecer-validacion-token/specs/api-token-authentication/spec.md`.
 
 ## Contratos afectados/protegidos
 
@@ -49,8 +56,12 @@ La validación actual no permite comprobar que los datos del token fueron emitid
 
 ## Riesgos, supuestos y preguntas abiertas
 
-- **Riesgo de compatibilidad:** tokens emitidos antes de aplicar la nueva validación podrían dejar de ser aceptados.
-- **Supuesto:** existe un emisor confiable de tokens para las solicitudes legítimas; esta especificación no redefine su comportamiento.
-- **Pregunta abierta:** ¿cómo se gestionará la transición de tokens existentes para evitar interrupciones a clientes legítimos?
-- **Pregunta abierta:** ¿qué mecanismo de configuración y ciclo de rotación se usará para el secreto fuera del código fuente?
-- **Pregunta abierta:** ¿qué algoritmo, formato de token y política de rechazo se adoptarán? Deben decidirse durante el diseño técnico, sin cambiar los contratos protegidos aquí.
+- **Riesgo de compatibilidad:** los tokens Base64 anteriores quedan rechazados; no hay periodo de transición porque su autenticidad no es verificable.
+- **Riesgo de despliegue:** clave pública, `iss` y `aud` deben alinearse con el emisor; una configuración incorrecta produce `503`.
+- **Supuesto:** el servicio `auth` emite JWT compatibles (confirmado por la persona responsable); esta especificación no redefine su comportamiento.
+- **Restricción decidida (PLAN.md):** verificación RS256 con clave pública externa; sin criptografía propia.
+- **Pregunta abierta:** ¿qué ciclo de rotación de la clave pública se aplicará en despliegue?
+
+## Estado
+
+- Pendiente de revisión humana antes de avanzar a Architect.

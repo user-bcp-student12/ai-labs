@@ -34,8 +34,9 @@ def token_for(
     audience: str = TEST_AUDIENCE,
     signing_key: rsa.RSAPrivateKey = TEST_PRIVATE_KEY,
     omitted_claims: tuple[str, ...] = (),
+    claim_overrides: dict[str, object] | None = None,
 ) -> str:
-    claims: dict[str, str | int] = {
+    claims: dict[str, object] = {
         "sub": username,
         "role": role,
         "exp": int(time.time()) + offset,
@@ -44,6 +45,7 @@ def token_for(
     }
     for claim in omitted_claims:
         claims.pop(claim, None)
+    claims.update(claim_overrides or {})
     return jwt.encode(claims, signing_key, algorithm="RS256")
 
 
