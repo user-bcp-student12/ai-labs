@@ -24,7 +24,7 @@ Registro de pruebas de ai-labs. Esta version documenta solo la seccion `api`. La
 | `api/tests/test_api.py` | Pruebas existentes (4): listado, creacion y resumen, subida, token invalido. |
 | `api/tests/test_sql_characterization.py` | Caracterizacion y correccion de H-API-04 (6): comillas en titulo, owner y resumen. |
 | `api/tests/test_endpoints_contract.py` | Contrato de `docs/ENDPOINTS.md` (64): camino feliz, casos borde y errores documentados. |
-| `api/tests/test_authentication.py` | Configuracion JWT ausente o invalida y cierre seguro (4 casos). |
+| `api/tests/test_authentication.py` | Configuracion JWT ausente o invalida, cierre seguro, claims `sub`/`role` vacios o no textuales, ausencia de secretos en registros y respuestas, y prefijo `Bearer` (13 casos). |
 | `api/tests/test_known_defects.py` | Defectos conocidos (9): 7 siguen con `xfail`; H-API-02 se valida como resuelto y el 401 mantiene un detalle generico. |
 | `api/tests/conftest.py` | Fixtures comunes: cliente, claves RSA ficticias, tokens JWT, token legado y configuracion aislada. |
 
@@ -69,7 +69,7 @@ Fuente de los contratos: `docs/ENDPOINTS.md`. Los defectos conocidos se marcan c
 | GET /api/backend-health | Servicio inaccesible | error documentado | 200, `status` 0, `body` no vacio |
 | GET /api/backend-health | Token invalido (9 casos) | error 401 | 401, `detail` empieza por `Invalid token: ` |
 
-La suite actual contiene 80 pruebas exitosas y 7 defectos conocidos en `xfail`. Cada endpoint protegido verifica nueve tipos de credencial invalida; las pruebas adicionales verifican configuracion ausente o invalida.
+La suite actual contiene 89 pruebas exitosas y 7 defectos conocidos en `xfail`. Cada endpoint protegido verifica nueve tipos de credencial invalida; las pruebas adicionales verifican configuracion ausente o invalida.
 
 ### Resultados ejecutados
 
@@ -91,6 +91,23 @@ Los resultados historicos se ejecutaron desde `api/` con `api/.venv` el 2026-10-
 - **Cobertura tras H-API-02**: `app/main.py` 98%, `app/security.py` 93%, total de `app/` 97%. La cobertura del modulo nuevo de verificacion supera la meta para codigo modificado.
 - **Umbral**: 85% (AGENTS.md). Cumplido en ambas mediciones.
 
+## Mapeo spec-prueba (HU-01, H-API-02)
+
+Fuente: `openspec/changes/hu-01-fortalecer-validacion-token/specs/api-token-authentication/spec.md`.
+
+| requisito | prueba que lo protege | estado |
+|---|---|---|
+| Aceptacion de JWT firmado valido | `test_endpoints_contract.py` (camino feliz de GET /api/tasks, GET /api/summary) | cubierto |
+| Rechazo de token invalido (alterado, otra clave, expirado, emisor/audiencia, sin role, algoritmo incorrecto) | `conftest.py::invalid_auth` usado en `test_endpoints_contract.py` y `test_api.py` | cubierto |
+| Rechazo de token sin firma | `test_known_defects.py::test_legacy_token_is_rejected` (Base64 sin firma JWT) | cubierto parcial: no hay prueba con JWT `alg=none` |
+| Header ausente | `conftest.py::invalid_auth` (caso `missing`) | cubierto |
+| Configuracion obligatoria (ausente o clave invalida, 503) | `test_authentication.py` | cubierto |
+| Ausencia de secretos en el codigo fuente | ninguna prueba automatica; revision de codigo | hueco (fuera de tareas de caracterizacion) |
+| No registrar tokens ni claves | `test_authentication.py::test_rejected_token_and_key_do_not_leak_to_logs_or_response` | cubierto (nueva) |
+| `sub` y `role` vacios o no textuales -> 401 | `test_authentication.py::test_empty_or_non_text_identity_claims_are_rejected` | cubierto (nueva) |
+| Contrato de rechazo 401 con `detail` y 503 con mensaje fijo | `test_authentication.py`, `test_endpoints_contract.py` | cubierto |
+| `Bearer` en minusculas y header sin prefijo | `test_authentication.py::test_lowercase_bearer_prefix_is_rejected_pending_decision`, `test_authentication.py::test_header_without_bearer_prefix_is_accepted_pending_decision` | caracterizado, pendiente de decision humana |
+
 ## Registro de ejecuciones
 
 | fecha | componente | IDs | ejecucion | codigo de salida | resultado |
@@ -103,6 +120,13 @@ Los resultados historicos se ejecutaron desde `api/` con `api/.venv` el 2026-10-
 | 2026-10-27 | api | H-API-02 | Caracterizacion previa a la implementacion | 1 | 4 fallos esperados; no existia verificacion JWT ni manejo fail-closed de configuracion |
 | 2026-10-27 | api | H-API-02 | Suite completa con cobertura tras el cambio | 0 | 80 passed, 7 xfailed; 97% global, `security.py` 93% |
 | 2026-10-27 | api | H-API-02 | Quality gate `python tools/lab.py test api` | 0 | 80 passed, 7 xfailed; 97.28% total coverage (85% requerido) |
+| 2026-10-29 | api | HU-01 (H-API-02) | Linea base previa a pruebas nuevas: `python tools/lab.py test api` | 0 | 80 passed, 7 xfailed; 97.28% total coverage |
+| 2026-10-29 | api | HU-01 (H-API-02) | Caracterizacion nueva: `.venv/Scripts/python.exe -m pytest tests/test_authentication.py -v -p no:cacheprovider` desde `api/` | 0 | 13 passed (4 previas y 9 nuevas) |
+| 2026-10-29 | api | HU-01 (H-API-02) | Suite completa tras caracterizacion: `python tools/lab.py test api` | 0 | 89 passed, 7 xfailed; 98.64% total coverage; `app/security.py` 100% |
+| 2026-10-29 | api | HU-01 (H-API-02) | Sin cambios funcionales (tarea 2.1): `git diff --stat -- api/app` | 0 | salida vacia |
+| 2026-10-29 | api | HU-01 (H-API-02) | Revision de divergencia spec-prueba (tarea 2.3) sobre 1.3 a 1.5 | no aplica | sin divergencia; tareas 3.x no se activan. `Bearer` en minusculas y header sin prefijo sigue pendiente de decision humana |
+| 2026-10-29 | api | HU-01 (H-API-02) | Ejecucion final (tareas 2.2 y 4.1): `python tools/lab.py test api` | 0 | 89 passed, 7 xfailed; 98.64% total coverage (85% requerido) |
+| 2026-10-29 | api | HU-01 (H-API-02) | Validacion OpenSpec (tarea 4.2): `openspec validate hu-01-fortalecer-validacion-token` desde la raiz | 0 | Change is valid |
 
 ## Fallos
 
