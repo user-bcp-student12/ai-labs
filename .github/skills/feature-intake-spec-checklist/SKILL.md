@@ -1,14 +1,14 @@
 ---
 name: feature-intake-spec-checklist
-description: Estandariza la definición de funcionalidades antes de la implementación generando un paquete mínimo trazable que cubra alcance, decisiones, riesgos, criterios de aceptación y planes de validación.
+description: TODO
 ---
 
 # Skill: Feature Intake -> Spec Checklist
 
 ## 1) Metadata
-- **Skill ID:** feature-intake-spec-checklist
+- **Skill ID:** 
 - **Version:** 0.1.0
-- **Purpose:** Estandarizar la definición de funcionalidades antes de la implementación generando un paquete mínimo trazable que cubra alcance, decisiones, riesgos, aceptación y validación.
+- **Purpose:** TODO.
 - **Audience (roles):** Chapter/PO, Tech Lead, Backend, Frontend, QA, Cyber
 - **When to use:** Antes de crear tareas de implementación o abrir un PR significativo.
 - **When NOT to use:** Incidentes P1 de producción, cambios triviales como typos o tareas sin impacto funcional.
