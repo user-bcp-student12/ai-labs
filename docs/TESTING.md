@@ -6,6 +6,13 @@
 - Fuente ejecutable: [api/tests/test_api.py](../api/tests/test_api.py).
 - La API tiene cinco endpoints protegidos por JWT. Las pruebas JWT usan una clave local ficticia, issuer y audience de test.
 
+## Evidencia H-API-02: contrato JWT de la API
+- Alcance: las pruebas verifican el validador de la API con tokens sintéticos HS256 y valores ficticios; no verifican un token emitido por el componente de autenticación real.
+- `test_accepts_signed_jwt` comprueba la aceptación del token válido; `test_rejects_jwt_with_invalid_claims` comprueba firma, issuer, audience y expiración inválidos; `test_reports_missing_jwt_configuration` comprueba HTTP 503 si falta configuración.
+- Comando ejecutado desde la raíz el 2026-11-03: `python tools/lab.py test api`.
+- Resultado: 43 pruebas pasaron; cobertura total 98.29% (gate 85% satisfecho); una advertencia de deprecación de Starlette/AnyIO.
+- Limitación: la interoperabilidad con el emisor real sigue sin verificarse.
+
 ## Matriz de casos
 | endpoint | caso | tipo | resultado esperado |
 |---|---|---|---|
