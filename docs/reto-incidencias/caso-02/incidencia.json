@@ -1,0 +1,28 @@
+{
+  "case_id": "caso-02",
+  "service": "acceso",
+  "error_code": "AUTH_DEPENDENCY_UNAVAILABLE",
+  "correlation_id": "LOGIN-DEMO-201",
+  "first_seen": "2026-11-03T15:00:01Z",
+  "last_seen": "2026-11-03T15:00:04Z",
+  "occurrences": 2,
+  "priority": "P2",
+  "summary": "Dos eventos ERROR AUTH_DEPENDENCY_UNAVAILABLE distintos registran una respuesta HTTP 503 de la dependencia de identidad.",
+  "impact": "La solicitud de acceso LOGIN-DEMO-201 se vio afectada. El log no confirma el resultado final ni demuestra un rechazo por credenciales incorrectas.",
+  "evidence": [
+    {
+      "file": "caso-02-acceso.jsonl",
+      "line": 2,
+      "text": "{\"timestamp\":\"2026-11-03T10:00:01-05:00\",\"level\":\"ERROR\",\"service\":\"acceso\",\"correlation_id\":\"LOGIN-DEMO-201\",\"event_id\":\"evt-202\",\"code\":\"AUTH_DEPENDENCY_UNAVAILABLE\",\"http_status\":503,\"dependency\":\"identidad-demo\",\"password\":\"[REDACTADO]\"}"
+    },
+    {
+      "file": "caso-02-acceso.jsonl",
+      "line": 4,
+      "text": "{\"timestamp\":\"2026-11-03T10:00:04-05:00\",\"level\":\"ERROR\",\"service\":\"acceso\",\"correlation_id\":\"LOGIN-DEMO-201\",\"event_id\":\"evt-203\",\"code\":\"AUTH_DEPENDENCY_UNAVAILABLE\",\"http_status\":503,\"dependency\":\"identidad-demo\",\"token\":\"[REDACTADO]\"}"
+    }
+  ],
+  "missing_data": [
+    "El log no confirma el resultado final de autenticación para LOGIN-DEMO-201 ni si hubo un intento posterior exitoso."
+  ],
+  "recommended_action": "Verificar con el servicio de identidad el resultado final de LOGIN-DEMO-201 y la disponibilidad de la dependencia antes de aconsejar un nuevo intento o un cambio de credenciales."
+}
